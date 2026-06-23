@@ -1,0 +1,27 @@
+# Replace YOUR-UNIQUE-APP-NAME with something unique (e.g. flashmind-wintop)
+# App names are global on Fly.io — no two apps can share the same name
+app = "YOUR-UNIQUE-APP-NAME"
+primary_region = "iad"
+
+[build]
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+  DATA_DIR = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[mounts]]
+  source = "flashcard_data"
+  destination = "/data"
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
