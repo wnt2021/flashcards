@@ -89,6 +89,17 @@ router.post('/deck/:deckId', upload.fields([{ name: 'front_image', maxCount: 1 }
   res.json(withTags(db.prepare('SELECT * FROM cards WHERE id = ?').get(result.lastInsertRowid)));
 });
 
+router.put('/bulk-topic', (req, res) => {
+  const { cardIds, topicId } = req.body;
+  if (!Array.isArray(cardIds) || cardIds.length === 0) {
+    return res.status(400).json({ error: 'cardIds required' });
+  }
+  const topicIdVal = topicId ? parseInt(topicId) : null;
+  const update = db.prepare('UPDATE cards SET topic_id = ? WHERE id = ?');
+  db.transaction(() => { for (const id of cardIds) update.run(topicIdVal, id); })();
+  res.json({ updated: cardIds.length });
+});
+
 router.put('/:id', upload.fields([{ name: 'front_image', maxCount: 1 }, { name: 'back_image', maxCount: 1 }]), (req, res) => {
   const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(req.params.id);
   if (!card) return res.status(404).json({ error: 'Card not found' });

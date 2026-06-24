@@ -26,6 +26,12 @@ export default function DeckDetailPage() {
   const backFileRef = useRef();
   const [saving, setSaving] = useState(false);
 
+  // Bulk selection
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedCards, setSelectedCards] = useState(new Set());
+  const [bulkTopic, setBulkTopic] = useState('');
+  const [assigning, setAssigning] = useState(false);
+
   // Topics modal
   const [topicsModalOpen, setTopicsModalOpen] = useState(false);
   const [topicForm, setTopicForm] = useState({ name: '', color: TOPIC_COLORS[0] });
@@ -134,6 +140,38 @@ export default function DeckDetailPage() {
     } finally { setSavingTopic(false); }
   };
 
+  const toggleSelectMode = () => {
+    setSelectMode(s => !s);
+    setSelectedCards(new Set());
+    setBulkTopic('');
+  };
+
+  const toggleCardSelect = cardId => {
+    setSelectedCards(prev => {
+      const next = new Set(prev);
+      if (next.has(cardId)) next.delete(cardId);
+      else next.add(cardId);
+      return next;
+    });
+  };
+
+  const assignBulkTopic = async () => {
+    if (selectedCards.size === 0) return;
+    setAssigning(true);
+    try {
+      await api.put('/cards/bulk-topic', {
+        cardIds: Array.from(selectedCards),
+        topicId: bulkTopic || null,
+      });
+      await loadCards();
+      setSelectMode(false);
+      setSelectedCards(new Set());
+      setBulkTopic('');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
   const deleteTopic = async topic => {
     if (!confirm(`Delete topic "${topic.name}"? Cards in this topic will become uncategorised.`)) return;
     await api.delete(`/topics/${topic.id}`);
@@ -167,6 +205,16 @@ export default function DeckDetailPage() {
           className="flex-1 py-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 hover:border-brand-300 dark:hover:border-brand-700 rounded-xl font-semibold text-sm transition-colors">
           + Add Card
         </button>
+        {cards.length > 0 && (
+          <button onClick={toggleSelectMode}
+            className={`px-4 py-3 rounded-xl font-semibold text-sm transition-colors border ${
+              selectMode
+                ? 'bg-brand-50 dark:bg-brand-900/30 border-brand-300 dark:border-brand-700 text-brand-600 dark:text-brand-400'
+                : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:border-brand-300 dark:hover:border-brand-700'
+            }`}>
+            ☑
+          </button>
+        )}
       </div>
 
       {/* Topics filter */}
@@ -219,8 +267,26 @@ export default function DeckDetailPage() {
           {cards.map(card => {
             const topic = topics.find(t => t.id === card.topic_id);
             return (
-              <div key={card.id} className="bg-white dark:bg-gray-900 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-800 group">
-                <div className="flex items-start gap-4">
+              <div
+                key={card.id}
+                onClick={() => selectMode && toggleCardSelect(card.id)}
+                className={`rounded-2xl p-4 shadow-sm border transition-all group ${
+                  selectMode ? 'cursor-pointer select-none' : ''
+                } ${
+                  selectedCards.has(card.id)
+                    ? 'bg-brand-50 dark:bg-brand-900/20 border-brand-400 dark:border-brand-500'
+                    : 'bg-white dark:bg-gray-900 border-gray-100 dark:border-gray-800'
+                }`}>
+                <div className="flex items-start gap-3">
+                  {selectMode && (
+                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
+                      selectedCards.has(card.id)
+                        ? 'bg-brand-500 border-brand-500'
+                        : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800'
+                    }`}>
+                      {selectedCards.has(card.id) && <span className="text-white text-xs leading-none">✓</span>}
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       {topic && (
@@ -245,12 +311,14 @@ export default function DeckDetailPage() {
                     {card.back_image && <img src={`/uploads/${card.back_image}`} alt="" className="w-16 h-12 object-cover rounded-lg mb-1" />}
                     <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{card.back}</p>
                   </div>
-                  <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => openEdit(card)}
-                      className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 text-sm transition-colors">✏️</button>
-                    <button onClick={() => deleteCard(card)}
-                      className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-red-100 dark:hover:bg-red-900/30 text-sm transition-colors">🗑️</button>
-                  </div>
+                  {!selectMode && (
+                    <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => openEdit(card)}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 text-sm transition-colors">✏️</button>
+                      <button onClick={() => deleteCard(card)}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-red-100 dark:hover:bg-red-900/30 text-sm transition-colors">🗑️</button>
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-50 dark:border-gray-800">
                   <span className="text-xs text-gray-400">Interval: {card.interval}d</span>
@@ -260,6 +328,45 @@ export default function DeckDetailPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ── Bulk select toolbar ───────────────────────────────── */}
+      {selectMode && (
+        <div className="fixed bottom-20 md:bottom-4 left-0 right-0 md:left-56 z-40 px-4 pointer-events-none">
+          <div className="max-w-2xl mx-auto pointer-events-auto">
+            <div className="bg-gray-900 dark:bg-gray-800 rounded-2xl p-3 shadow-2xl flex items-center gap-2 flex-wrap">
+              <span className="text-white text-sm font-semibold shrink-0">{selectedCards.size} selected</span>
+              <button
+                onClick={() => setSelectedCards(selectedCards.size === cards.length ? new Set() : new Set(cards.map(c => c.id)))}
+                className="text-xs text-gray-400 hover:text-white transition-colors shrink-0">
+                {selectedCards.size === cards.length ? 'Deselect all' : 'Select all'}
+              </button>
+              <div className="flex-1" />
+              {topics.length > 0 ? (
+                <select
+                  value={bulkTopic}
+                  onChange={e => setBulkTopic(e.target.value)}
+                  className="bg-gray-800 dark:bg-gray-700 text-white rounded-lg px-3 py-1.5 text-sm border border-gray-600 focus:outline-none shrink-0">
+                  <option value="">No topic</option>
+                  {topics.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              ) : (
+                <span className="text-gray-400 text-xs">Create topics first</span>
+              )}
+              <button
+                onClick={assignBulkTopic}
+                disabled={selectedCards.size === 0 || assigning}
+                className="px-4 py-1.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-40 rounded-lg text-sm font-semibold text-white shrink-0 transition-colors">
+                {assigning ? 'Saving…' : 'Assign'}
+              </button>
+              <button
+                onClick={toggleSelectMode}
+                className="px-3 py-1.5 bg-gray-700 dark:bg-gray-600 hover:bg-gray-600 rounded-lg text-sm text-white shrink-0 transition-colors">
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
